@@ -74,7 +74,6 @@ RUN protoc --version
 ## Set up environments first to take advantage of layer caching
 #RUN mkdir test
 #COPY test/setup_environment.sh test/setup_environment.sh
-#COPY test/data/coldcard-multisig.patch test/data/coldcard-multisig.patch
 ## One by one to allow for intermediate caching of successful builds
 #RUN cd test; ./setup_environment.sh --trezor-1
 #RUN cd test; ./setup_environment.sh --trezor-t

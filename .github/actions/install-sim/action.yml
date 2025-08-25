@@ -27,7 +27,6 @@ runs:
         git config --global user.name "ci"
         pushd test/work; git clone --recursive https://github.com/Coldcard/firmware.git; popd
         tar -xvf coldcard-mpy.tar.gz
-        pushd test/work/firmware; git am ../../data/coldcard-multisig.patch; popd
         poetry run pip install -r test/work/firmware/requirements.txt
         pip install -r test/work/firmware/requirements.txt
 
