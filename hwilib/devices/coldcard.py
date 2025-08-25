@@ -126,56 +126,81 @@ class ColdcardClient(HardwareWalletClient):
         """
         self.device.check_mitm()
 
-        # Get psbt in hex and then make binary
-        tx.convert_to_v0()
-        fd = io.BytesIO(base64.b64decode(tx.serialize()))
+        # Get this devices master key fingerprint
+        xpub = self.device.send_recv(CCProtocolPacker.get_xpub('m/0\''), timeout=None)
+        master_fp = get_xpub_fingerprint(xpub)
 
-        # learn size (portable way)
-        sz = fd.seek(0, 2)
-        fd.seek(0)
+        # For multisigs, we may need to do multiple passes if we appear in an input multiple times
+        passes = 1
 
-        left = sz
-        chk = sha256()
-        for pos in range(0, sz, MAX_BLK_LEN):
-            here = fd.read(min(MAX_BLK_LEN, left))
-            if not here:
+        ver = None
+        try:
+            ver = self.device.send_recv(CCProtocolPacker.version())
+        except: pass
+        if not ver or ("X" not in ver.split("\n")[1]):
+            # is not EDGE firmware, to sign multiple keys
+            # from same origin, signing must be repeated
+            # EDGE can sign all in one sitting
+            for psbt_in in tx.inputs:
+                our_keys = 0
+                for key in psbt_in.hd_keypaths.keys():
+                    keypath = psbt_in.hd_keypaths[key]
+                    if keypath.fingerprint == master_fp and key not in psbt_in.partial_sigs:
+                        our_keys += 1
+                if our_keys > passes:
+                    passes = our_keys
+
+        for _ in range(passes):
+            # Get psbt in hex and then make binary
+            tx.convert_to_v0()
+            fd = io.BytesIO(base64.b64decode(tx.serialize()))
+
+            # learn size (portable way)
+            sz = fd.seek(0, 2)
+            fd.seek(0)
+
+            left = sz
+            chk = sha256()
+            for pos in range(0, sz, MAX_BLK_LEN):
+                here = fd.read(min(MAX_BLK_LEN, left))
+                if not here:
+                    break
+                left -= len(here)
+                result = self.device.send_recv(CCProtocolPacker.upload(pos, sz, here))
+                assert result == pos
+                chk.update(here)
+
+            # do a verify
+            expect = chk.digest()
+            result = self.device.send_recv(CCProtocolPacker.sha256())
+            assert len(result) == 32
+            if result != expect:
+                raise DeviceFailureError("Wrong checksum:\nexpect: %s\n   got: %s" % (b2a_hex(expect).decode('ascii'), b2a_hex(result).decode('ascii')))
+
+            # start the signing process
+            ok = self.device.send_recv(CCProtocolPacker.sign_transaction(sz, expect), timeout=None)
+            assert ok is None
+            if self.device.is_simulator:
+                self.device.send_recv(CCProtocolPacker.sim_keypress(b'y'))
+
+            print("Waiting for OK on the Coldcard...", file=sys.stderr)
+
+            while 1:
+                time.sleep(0.250)
+                done = self.device.send_recv(CCProtocolPacker.get_signed_txn(), timeout=None)
+                if done is None:
+                    continue
                 break
-            left -= len(here)
-            result = self.device.send_recv(CCProtocolPacker.upload(pos, sz, here))
-            assert result == pos
-            chk.update(here)
 
-        # do a verify
-        expect = chk.digest()
-        result = self.device.send_recv(CCProtocolPacker.sha256())
-        assert len(result) == 32
-        if result != expect:
-            raise DeviceFailureError("Wrong checksum:\nexpect: %s\n   got: %s" % (b2a_hex(expect).decode('ascii'), b2a_hex(result).decode('ascii')))
+            if len(done) != 2:
+                raise DeviceFailureError('Failed: %r' % done)
 
-        # start the signing process
-        ok = self.device.send_recv(CCProtocolPacker.sign_transaction(sz, expect), timeout=None)
-        assert ok is None
-        if self.device.is_simulator:
-            self.device.send_recv(CCProtocolPacker.sim_keypress(b'y'))
+            result_len, result_sha = done
 
-        print("Waiting for OK on the Coldcard...", file=sys.stderr)
+            result = self.device.download_file(result_len, result_sha, file_number=1)
 
-        while 1:
-            time.sleep(0.250)
-            done = self.device.send_recv(CCProtocolPacker.get_signed_txn(), timeout=None)
-            if done is None:
-                continue
-            break
-
-        if len(done) != 2:
-            raise DeviceFailureError('Failed: %r' % done)
-
-        result_len, result_sha = done
-
-        result = self.device.download_file(result_len, result_sha, file_number=1)
-
-        tx = PSBT()
-        tx.deserialize(base64.b64encode(result).decode())
+            tx = PSBT()
+            tx.deserialize(base64.b64encode(result).decode())
 
         return tx
 
