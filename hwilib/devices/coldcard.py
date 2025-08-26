@@ -100,6 +100,21 @@ class ColdcardClient(HardwareWalletClient):
             device.open_path(path.encode())
             self.device = ColdcardDevice(dev=device)
 
+        self._is_edge = None
+
+    @property
+    def is_edge(self):
+        """
+        Cached property, no need to ask device more than once
+        :return: bool
+        """
+        if self._is_edge is None:
+            try:
+                self._is_edge = self.is_edge_firmware()
+            except: pass # silent fail, normal firmware is implied
+
+        return self._is_edge
+
     @coldcard_exception
     def get_pubkey_at_path(self, path: str) -> ExtendedKey:
         self.device.check_mitm()
@@ -132,14 +147,15 @@ class ColdcardClient(HardwareWalletClient):
 
         # For multisigs, we may need to do multiple passes if we appear in an input multiple times
         passes = 1
-        for psbt_in in tx.inputs:
-            our_keys = 0
-            for key in psbt_in.hd_keypaths.keys():
-                keypath = psbt_in.hd_keypaths[key]
-                if keypath.fingerprint == master_fp and key not in psbt_in.partial_sigs:
-                    our_keys += 1
-            if our_keys > passes:
-                passes = our_keys
+        if not self.is_edge:
+            for psbt_in in tx.inputs:
+                our_keys = 0
+                for key in psbt_in.hd_keypaths.keys():
+                    keypath = psbt_in.hd_keypaths[key]
+                    if keypath.fingerprint == master_fp and key not in psbt_in.partial_sigs:
+                        our_keys += 1
+                if our_keys > passes:
+                    passes = our_keys
 
         for _ in range(passes):
             # Get psbt in hex and then make binary
@@ -390,13 +406,27 @@ class ColdcardClient(HardwareWalletClient):
         """
         raise UnavailableActionError('The Coldcard does not support toggling passphrase from the host')
 
+    def firmware_version(self) -> str:
+        return self.device.send_recv(CCProtocolPacker.version()).split("\n")[1]
+
+    def is_edge_firmware(self):
+        """
+        :return: True if this device is running EDGE firmware, False otherwise
+        """
+        if self.device.is_simulator:
+            cmd = "import version; RV.write(str(int(getattr(version, 'is_edge', 0))))"
+            rv = self.device.send_recv(b'EXEC' + cmd.encode('utf-8'), timeout=60000, encrypt=False)
+            return rv == b"1"
+        else:
+            _, ver, _, _, _ = self.device.send_recv(CCProtocolPacker.version()).split("\n")
+            return "X" == self.firmware_version()[-1]
+
     def can_sign_taproot(self) -> bool:
         """
-        The Coldard does not support Taproot yet.
-
-        :returns: False, always
+        Only COLDCARD EDGE support taproot.
+        :returns: Whether Taproot is supported
         """
-        return False
+        return self.is_edge
 
 
 def enumerate(password: Optional[str] = None, expert: bool = False, chain: Chain = Chain.MAIN, allow_emulators: bool = True) -> List[Dict[str, Any]]:
@@ -422,6 +452,9 @@ def enumerate(password: Optional[str] = None, expert: bool = False, chain: Chain
         with handle_errors(common_err_msgs["enumerate"], d_data):
             try:
                 client = ColdcardClient(path)
+                if client.is_edge:
+                    d_data['label'] = 'edge'
+                    d_data['model'] = 'edge_' + d_data['model']
                 d_data['fingerprint'] = client.get_master_fingerprint().hex()
             except RuntimeError as e:
                 # Skip the simulator if it's not there
