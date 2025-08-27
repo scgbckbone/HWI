@@ -582,9 +582,6 @@ class TestSignTx(DeviceTestCase):
 
     # Test wrapper to avoid mixed-inputs signing for Ledger
     def test_signtx(self):
-        if self.emulator.type == "coldcard":
-            # https://github.com/bitcoin-core/HWI/pull/795#issuecomment-3112271927
-            raise unittest.SkipTest("Coldcard sign test temporarily disabled")
 
         if self.emulator.type == "ledger" and not self.emulator.legacy:
             # https://github.com/bitcoin-core/HWI/pull/795#issuecomment-3112271927
