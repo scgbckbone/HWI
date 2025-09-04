@@ -111,7 +111,9 @@ class ColdcardClient(HardwareWalletClient):
         if self._is_edge is None:
             try:
                 self._is_edge = self.is_edge_firmware()
-            except: pass # silent fail, normal firmware is implied
+            except:
+                # silent fail, normal firmware is implied
+                pass
 
         return self._is_edge
 
