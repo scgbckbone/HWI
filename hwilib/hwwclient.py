@@ -135,6 +135,23 @@ class HardwareWalletClient(object):
         raise NotImplementedError("The HardwareWalletClient base class "
                                   "does not implement this method")
 
+    def display_address_by_wallet_id(
+            self,
+            uid: str,
+            change: bool,
+            index: int
+    ) -> str:
+        """
+        Display and return the address of wallet enrolled on a device with specific id.
+
+        :param uid: Unique identifier of wallet enrolled on the device
+        :param change: Return address from internal chain.
+        :param index: Return address from index.
+        :return: The retrieved address also being shown by the device
+        """
+        raise NotImplementedError("The HardwareWalletClient base class "
+                                  "does not implement this method")
+
     def wipe_device(self) -> bool:
         """
         Wipe the device.

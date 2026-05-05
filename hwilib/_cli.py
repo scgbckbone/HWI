@@ -57,7 +57,8 @@ def backup_device_handler(args: argparse.Namespace, client: HardwareWalletClient
     return backup_device(client, label=args.label, backup_passphrase=args.backup_passphrase)
 
 def displayaddress_handler(args: argparse.Namespace, client: HardwareWalletClient) -> Dict[str, str]:
-    return displayaddress(client, desc=args.desc, path=args.path, addr_type=args.addr_type)
+    return displayaddress(client, desc=args.desc, path=args.path, addr_type=args.addr_type,
+                          wallet_id=args.wallet, change=args.change, index=args.idx)
 
 def enumerate_handler(args: argparse.Namespace) -> List[Dict[str, Any]]:
     return enumerate(password=args.password, expert=args.expert, chain=args.chain, allow_emulators=args.allow_emulators)
@@ -194,7 +195,10 @@ def get_parser() -> HWIArgumentParser:
     group = displayaddr_parser.add_mutually_exclusive_group(required=True)
     group.add_argument('--desc', help='Output Descriptor. E.g. wpkh([00000000/84h/0h/0h]xpub.../0/0), where 00000000 must match --fingerprint and xpub can be obtained with getxpub. See doc/descriptors.md in Bitcoin Core')
     group.add_argument('--path', help='The BIP 32 derivation path of the key embedded in the address, default follows BIP43 convention, e.g. ``m/84h/0h/0h/1/*``')
+    group.add_argument('--wallet', help='Unique identifier of the wallet enrolled on the device')
     displayaddr_parser.add_argument("--addr-type", help="The address type to display", type=AddressType.argparse, choices=list(AddressType), default=AddressType.WIT) # type: ignore
+    displayaddr_parser.add_argument("--change", action='store_true', help="Use internal chain") # type: ignore
+    displayaddr_parser.add_argument("--idx", type=int, default=0, help="The index for desired address") # type: ignore
     displayaddr_parser.set_defaults(func=displayaddress_handler)
 
     setupdev_parser = subparsers.add_parser('setup', help='Setup a device. Passphrase protection uses the password given by -p. Requires interactive mode')

@@ -281,6 +281,9 @@ class ColdcardClient(HardwareWalletClient):
         addr_type: AddressType,
         multisig: MultisigDescriptor,
     ) -> str:
+        if self.is_edge:
+            raise UnavailableActionError("Coldcard EDGE does not support this command."
+                                         " Use displayaddress with 'wallet_name' parameter")
         if not multisig.is_sorted:
             raise BadArgumentError("Coldcards only allow sortedmulti descriptors")
 
@@ -320,6 +323,14 @@ class ColdcardClient(HardwareWalletClient):
         if self.device.is_simulator:
             self.device.send_recv(CCProtocolPacker.sim_keypress(b'y'))
         return address
+
+    @coldcard_exception
+    def display_address_by_wallet_id(self, name: str, change: bool, index: int) -> str:
+        if not self.is_edge:
+            raise UnavailableActionError("Coldcard does not support this command."
+                                         " Use displayaddress with 'desc' parameter")
+        return self.device.send_recv(CCProtocolPacker.miniscript_address(name, change, index),
+                                     timeout=None)
 
     def setup_device(self, label: str = "", passphrase: str = "") -> bool:
         """

@@ -441,7 +441,10 @@ def displayaddress(
     client: HardwareWalletClient,
     path: Optional[str] = None,
     desc: Optional[str] = None,
-    addr_type: AddressType = AddressType.WIT
+    addr_type: AddressType = AddressType.WIT,
+    wallet_id: Optional[str] = None,
+    change: bool = False,
+    index: int = 0,
 ) -> Dict[str, str]:
     """
     Display an address on the device for client.
@@ -451,6 +454,9 @@ def displayaddress(
     :param path: The path of the address to display. Mutually exclusive with ``desc``
     :param desc: The descriptor to display the address for. Mutually exclusive with ``path``
     :param addr_type: The address type to return. Only works with ``path``
+    :param wallet_id: Name of the complex wallet enrolled on the HWW device
+    :param change: Use internal chain. Only works with ``wallet_id``
+    :param index: Address index. Only works with ``wallet_id``
     :return: A dictionary containing the address displayed.
         Returned as ``{"address": <base58 or bech32 address string>}``.
     :raises: BadArgumentError: if an argument is malformed, missing, or conflicts.
@@ -492,6 +498,13 @@ def displayaddress(
             elif isinstance(descriptor, TRDescriptor):
                 addr_type = AddressType.TAP
             return {"address": client.display_singlesig_address(pubkey.get_full_derivation_path(0), addr_type)}
+
+    elif wallet_id is not None:
+        if not getattr(client, "display_address_by_wallet_id"):
+            raise UnavailableActionError("No support for querying address by wallet id")
+
+        return {"address": client.display_address_by_wallet_id(wallet_id, change, index)}
+
     raise BadArgumentError("Missing both path and descriptor")
 
 def setup_device(client: HardwareWalletClient, label: str = "", backup_passphrase: str = "") -> Dict[str, bool]:
